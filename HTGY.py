@@ -4,29 +4,39 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 
-# Phần 1: Gợi ý dựa trên mô tả sản phẩm (Content-based)
-def content_based_recommendation(product_description, product_descriptions, keyword=None):
+# ========================= Phần 1: Gợi ý dựa trên mô tả sản phẩm =========================
+def content_based_recommendation(product_description, product_descriptions):
+    """
+    Gợi ý sản phẩm dựa trên nội dung (mô tả sản phẩm).
+    """
     product_descriptions = product_descriptions.dropna()
     vectorizer = TfidfVectorizer(stop_words='english')
     X = vectorizer.fit_transform(product_descriptions["product_description"])
 
-    # Nếu có từ khóa được cung cấp, lọc các sản phẩm có liên quan
-    if keyword:
-        related_to_keyword = product_descriptions[
-            product_descriptions["product_description"].str.contains(keyword, case=False, na=False)
-        ]
-        return related_to_keyword["product_description"].tolist()  # Trả về tất cả sản phẩm liên quan
-
-    # Nếu không có từ khóa cụ thể, thực hiện tìm kiếm dựa trên mô tả chung
     true_k = 10
     model = KMeans(n_clusters=true_k, init='k-means++', max_iter=100, n_init=1, random_state=42)
     model.fit(X)
+
+    # Dự đoán cụm sản phẩm dựa trên mô tả đầu vào
     Y = vectorizer.transform([product_description])
     cluster_label = model.predict(Y)[0]
-    cluster_products = product_descriptions[model.labels_ == cluster_label]["product_description"].tolist()
-    return cluster_products  # Trả về tất cả các sản phẩm cùng nhóm
 
-# Phần 2: Giao diện người dùng với tkinter
+    # Lọc sản phẩm thuộc cùng cụm
+    cluster_products = product_descriptions[model.labels_ == cluster_label]["product_description"].tolist()
+    return cluster_products
+
+# ========================= Phần 2: Gợi ý dựa trên từ khóa =========================
+def keyword_based_recommendation(keyword, product_descriptions):
+    """
+    Gợi ý sản phẩm dựa trên từ khóa tìm kiếm.
+    """
+    product_descriptions = product_descriptions.dropna()
+    related_to_keyword = product_descriptions[
+        product_descriptions["product_description"].str.contains(keyword, case=False, na=False)
+    ]
+    return related_to_keyword["product_description"].tolist()
+
+# ========================= Phần 3: Xử lý giao diện người dùng =========================
 def display_recommendations():
     try:
         product_descriptions = pd.read_csv('product_description.csv')  # Đọc file mô tả sản phẩm
@@ -35,7 +45,7 @@ def display_recommendations():
         return
 
     product_description = entry_product_description.get().strip()
-    keyword = entry_keyword.get().strip()  # Thêm trường nhập từ khóa
+    keyword = entry_keyword.get().strip()
 
     if not product_description and not keyword:
         messagebox.showwarning("Cảnh báo", "Vui lòng nhập mô tả sản phẩm hoặc từ khóa để tìm kiếm.")
@@ -43,29 +53,37 @@ def display_recommendations():
 
     result_text.delete(1.0, tk.END)  # Xóa nội dung cũ
 
-    recommendations_content = []
+    # Tìm kiếm theo từ khóa
+    if keyword:
+        recommendations_keyword = keyword_based_recommendation(keyword, product_descriptions)
+        result_text.insert(tk.END, "Sản phẩm được gợi ý (Dựa trên từ khóa):\n", "header")
+        if recommendations_keyword:
+            for product in recommendations_keyword:
+                result_text.insert(tk.END, f"- {product}\n", "content")
+        else:
+            result_text.insert(tk.END, "Không có sản phẩm nào liên quan từ khóa.\n", "content")
 
-    # Gợi ý dựa trên mô tả sản phẩm (content)
+    # Tìm kiếm theo mô tả sản phẩm
     if product_description:
-        recommendations_content = content_based_recommendation(product_description, product_descriptions, keyword)
-        result_text.insert(tk.END, "Sản phẩm được gợi ý (Dựa trên nội dung):\n", "header")
+        recommendations_content = content_based_recommendation(product_description, product_descriptions)
+        result_text.insert(tk.END, "\nSản phẩm được gợi ý (Dựa trên mô tả sản phẩm):\n", "header")
         if recommendations_content:
             for product in recommendations_content:
                 result_text.insert(tk.END, f"- {product}\n", "content")
         else:
-            result_text.insert(tk.END, "Không có sản phẩm nào được gợi ý.\n", "content")
+            result_text.insert(tk.END, "Không có sản phẩm nào được gợi ý từ mô tả.\n", "content")
 
-    # Hiển thị kết quả sản phẩm liên quan (từ cùng nhóm)
-    if product_description or keyword:
-        result_text.insert(tk.END, "\nCác sản phẩm liên quan khác:\n", "header")
-        related_products = set(recommendations_content)  # Gộp cả 2 danh sách
-        if related_products:
-            for product in related_products:
-                result_text.insert(tk.END, f"- {product}\n", "related")
+    # Tìm kiếm kết hợp (sản phẩm có cả từ khóa và mô tả)
+    if keyword and product_description:
+        recommendations_combined = list(set(recommendations_keyword) & set(recommendations_content))
+        result_text.insert(tk.END, "\nSản phẩm được gợi ý (Kết hợp từ khóa và mô tả):\n", "header")
+        if recommendations_combined:
+            for product in recommendations_combined:
+                result_text.insert(tk.END, f"- {product}\n", "content")
         else:
-            result_text.insert(tk.END, "Không có sản phẩm liên quan.\n", "related")
+            result_text.insert(tk.END, "Không có sản phẩm nào phù hợp với cả từ khóa và mô tả.\n", "content")
 
-# Tạo giao diện
+# ========================= Phần 4: Giao diện người dùng Tkinter =========================
 root = tk.Tk()
 root.title("Gợi ý sản phẩm")
 
@@ -94,7 +112,6 @@ result_text.pack(pady=10)
 # Tạo các tag cho phần hiển thị
 result_text.tag_configure("header", foreground="blue", font=("Arial", 12, "bold"))
 result_text.tag_configure("content", foreground="green")
-result_text.tag_configure("related", foreground="green")
 
 # Khởi động giao diện
 root.mainloop()
